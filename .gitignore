@@ -1,0 +1,31 @@
+# Virtual environment
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Database
+db.sqlite3
+
+# Zip archives
+*.zip
+predictions.zip
+lstm_backend.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ML model files (large binaries)
+ml_models/*.pth
+ml_models/*.gz
+ml_models/*.h5
+ml_models/*.keras

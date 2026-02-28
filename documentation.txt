@@ -1,0 +1,268 @@
+========================================================================
+    AI-POWERED CHECKOUT & INVENTORY API — FRONTEND INTEGRATION GUIDE
+========================================================================
+
+Base URL (Local Dev):  http://127.0.0.1:8000
+All API endpoints are under:  /api/
+
+This document outlines the expected request payloads and response
+structures to help you integrate the Next.js/React frontend.
+
+To test immediately, two accounts are pre-seeded:
+- Admin:   admin   / admin123
+- Cashier: cashier / cashier123
+
+========================================================================
+1. AUTHENTICATION & USERS
+========================================================================
+Uses JSON Web Tokens (JWT). Send the access token in the headers:
+  Authorization: Bearer <your_access_token>
+
+POST /api/auth/login/
+  Description: Authenticate and get tokens. (No Auth required)
+  Request Body:
+    { "username": "admin", "password": "admin123" }
+  Response (200 OK):
+    {
+      "access": "eyJhbGciOiJIUz...",
+      "refresh": "eyJhbGciOiJIUz...",
+      "user": {
+        "id": 1,
+        "username": "admin",
+        "role": "admin",
+        "email": "admin@store.com",
+        "first_name": "",
+        "last_name": "",
+        "date_joined": "2026-02-27T12:00:00Z"
+      }
+    }
+
+GET /api/auth/me/
+  Description: Get current logged-in user profile. (Auth required)
+  Response: Same "user" object as login.
+
+POST /api/auth/register/
+  Description: Create a new user account. (Admin Auth Only)
+  Request Body:
+    {
+      "username": "new_cashier",
+      "password": "securepassword",
+      "role": "cashier",         // "admin" or "cashier"
+      "email": "cashier@test.com"
+    }
+
+GET /api/auth/users/
+  Description: List all staff accounts. (Admin Auth Only)
+
+
+========================================================================
+2. PRODUCTS
+========================================================================
+Full CRUD for products. All read endpoints require Auth; all write
+endpoints require Admin Auth.
+
+GET /api/products/
+  Description: List all active products.
+  Response (200 OK):
+    [
+      {
+        "id": 1,
+        "name": "Coca-Cola 500ml",
+        "description": "Carbonated soft drink",
+        "price": "350.00",
+        "quantity": 120,
+        "sku": "BEV-001",
+        "low_stock_threshold": 10,
+        "is_active": true,
+        "is_low_stock": false
+      },
+      ...
+    ]
+
+POST /api/products/
+  Description: Create a new product. (Admin only)
+  Request Body:
+    {
+      "name": "Fanta 500ml",
+      "price": 350.00,
+      "quantity": 50,
+      "sku": "BEV-005",
+      "low_stock_threshold": 15
+    }
+
+PUT /api/products/<id>/
+  Description: Update a product entirely. (Admin only)
+
+DELETE /api/products/<id>/
+  Description: Soft-delete a product (sets is_active=false). (Admin only)
+
+
+========================================================================
+3. INVENTORY & RESTOCKING
+========================================================================
+GET /api/inventory/
+  Description: Get current stock levels for all products.
+  Response (200 OK):
+    [
+      {
+        "id": 1,
+        "name": "Coca-Cola 500ml",
+        "quantity": 120,
+        "low_stock_threshold": 10,
+        "is_low_stock": false,
+        "price": "350.00"
+      },
+      ...
+    ]
+
+GET /api/inventory/low-stock/
+  Description: Returns only products where quantity <= low_stock_threshold.
+
+POST /api/inventory/restock/
+  Description: Add stock to an existing product. (Admin only)
+  Request Body:
+    {
+      "product_id": 1,
+      "quantity": 50,
+      "notes": "Weekly supplier delivery"
+    }
+  Response (200 OK):
+    {
+      "message": "Restocked Coca-Cola 500ml by 50 units.",
+      "new_quantity": 170,
+      "log": { ... }
+    }
+
+GET /api/inventory/logs/
+  Description: Audit log of all stock changes (sales, restocks).
+  Query Params: ?product_id=1&change_type=sale|restock|adjustment
+
+
+========================================================================
+4. TRANSACTIONS & CHECKOUT
+========================================================================
+POST /api/transactions/checkout/
+  Description: Process a customer checkout. Deducts inventory atomically.
+  Request Body:
+    {
+      "items": [
+        { "product_id": 1, "quantity": 2 },
+        { "product_id": 4, "quantity": 1 }
+      ]
+    }
+  Response (201 Created):
+    {
+      "receipt_number": "8F3A2C1B9D4E",
+      "items": [
+        {
+          "id": 412,
+          "product": 1,
+          "product_name": "Coca-Cola 500ml",
+          "quantity": 2,
+          "unit_price": "350.00",
+          "total_price": "700.00",
+          "cashier": 2,
+          "cashier_name": "cashier",
+          "receipt_number": "8F3A2C1B9D4E",
+          "timestamp": "2026-02-27T18:30:00Z"
+        },
+        ...
+      ],
+      "grand_total": "1350.00",
+      "message": "Checkout completed successfully."
+    }
+  Error (400 Bad Request):
+    If stock is insufficient or product is invalid:
+    {
+      "errors": ["Insufficient stock for 'Coca-Cola 500ml'. Available: 1, Requested: 2."]
+    }
+
+GET /api/transactions/
+  Description: View transaction history.
+  Query Params: ?product_id=1&receipt=8F3A...&date_from=2026-01-01&date_to=2026-02-27
+
+
+========================================================================
+5. AI DEMAND FORECASTING (LSTM)
+========================================================================
+POST /api/predictions/forecast/
+  Description: Trigger the AI model to predict future demand based on the last 30 days of sales history in the database. (Admin only)
+  Request Body:
+    {
+      "product_id": 1,
+      "days_ahead": 7      // Optional, defaults to 7 (max 30)
+    }
+  Response (200 OK):
+    {
+      "product": "Coca-Cola 500ml",
+      "predicted_demand_per_day": 12,
+      "days_ahead": 7,
+      "total_predicted": 84,
+      "predictions": [ { ... array of predicted demand objects per date ... } ],
+      "message": "Forecast generated successfully."
+    }
+
+GET /api/predictions/
+  Description: List previously saved prediction results.
+
+GET /api/predictions/recommendations/
+  Description: Get AI-driven restocking advice comparing current stock against predicted demand.
+  Response (200 OK):
+    [
+      {
+        "product_id": 2,
+        "product_name": "Indomie Noodles",
+        "current_stock": 5,
+        "predicted_demand": 45.0,
+        "recommended_restock": 48,   // Gap + 20% safety buffer
+        "urgency": "critical"        // "critical", "warning", or "ok"
+      },
+      ... sorted by urgency ...
+    ]
+
+
+========================================================================
+6. DASHBOARD ANALYTICS
+========================================================================
+GET /api/dashboard/summary/
+  Description: High-level Key Performance Indicators (KPIs).
+  Response:
+    {
+      "total_products": 15,
+      "low_stock_count": 2,
+      "total_transactions": 345,
+      "total_revenue": "450500.00",
+      "today_transactions": 12,
+      "today_revenue": "15300.00"
+    }
+
+GET /api/dashboard/sales-trends/
+  Description: Aggregated sales data over time for charts.
+  Query Params: ?period=daily|weekly|monthly &days=30 (default 30)
+  Response:
+    [
+      {
+        "period": "2026-02-20",
+        "total_revenue": "12500.00",
+        "total_quantity": 45,
+        "transaction_count": 8
+      },
+      ...
+    ]
+
+GET /api/dashboard/top-products/
+  Description: Best-selling items.
+  Query Params: ?limit=10
+  Response:
+    [
+      {
+        "product_id": 13,
+        "product_name": "Maggi Cube",
+        "total_sold": 450,
+        "total_revenue": "22500.00"
+      },
+      ...
+    ]
+
+GET /api/dashboard/forecast-overview/
+  Description: Returns the single LATEST prediction assigned to each product. Useful for a grid/table view.
